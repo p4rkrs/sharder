@@ -13,10 +13,7 @@ use futures::{
     stream::StreamExt,
 };
 use redis_async::client as redis_client;
-use serenity::{
-    gateway::Shard,
-    model::event::GatewayEvent,
-};
+use serenity::gateway::Shard;
 use std::{
     env,
     net::{IpAddr, Ipv4Addr, SocketAddr},
