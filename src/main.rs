@@ -54,7 +54,6 @@ async fn try_main() -> Result<()> {
         [shard_id as u64, shard_total],
     ).compat())?;
     let mut messages = shard.messages().compat();
-    let redis_key = format!("sharder:{}:from", 0u64);
 
     loop {
         let result: Result<_> = try {
@@ -85,7 +84,7 @@ async fn try_main() -> Result<()> {
 
                 bytes.write_u16::<LE>(shard_id)?;
 
-                let cmd = resp_array!["RPUSH", &redis_key, bytes];
+                let cmd = resp_array!["RPUSH", "sharder:from", bytes];
                 redis.send_and_forget(cmd);
 
                 println!("Message processing completed");
