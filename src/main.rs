@@ -5,8 +5,8 @@
 
 mod error;
 
+use byteorder::{LE, WriteBytesExt};
 use crate::error::{Error, Result};
-
 use futures::{
     compat::{Future01CompatExt, Stream01CompatExt, TokioDefaultSpawner},
     future::{FutureExt, TryFutureExt},
@@ -44,14 +44,14 @@ async fn try_main() -> Result<()> {
 
         SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 6379)
     };
-    let shard_id = env::var("DISCORD_SHARD_ID")?.parse()?;
+    let shard_id = env::var("DISCORD_SHARD_ID")?.parse::<u16>()?;
     let shard_total = env::var("DISCORD_SHARD_TOTAL")?.parse()?;
 
     let redis = await!(redis_client::paired_connect(&redis_addr).compat())?;
 
     let mut shard = await!(Shard::new(
         token.clone(),
-        [shard_id, shard_total],
+        [shard_id as u64, shard_total],
     ).compat())?;
     let mut messages = shard.messages().compat();
     let redis_key = format!("sharder:{}:from", 0u64);
@@ -65,7 +65,7 @@ async fn try_main() -> Result<()> {
                 let event = shard.parse(&msg).unwrap();
                 debug!("Parsed message");
 
-                let bytes = match msg {
+                let mut bytes = match msg {
                     TungsteniteMessage::Binary(v) => v,
                     TungsteniteMessage::Text(v) => v.into_bytes(),
                     _ => continue,
@@ -82,6 +82,8 @@ async fn try_main() -> Result<()> {
                 }
 
                 debug!("Pushing event to redis");
+
+                bytes.write_u16::<LE>(shard_id)?;
 
                 let cmd = resp_array!["RPUSH", &redis_key, bytes];
                 redis.send_and_forget(cmd);
