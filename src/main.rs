@@ -24,6 +24,7 @@ use serenity::{
 use std::{
     env,
     net::{IpAddr, Ipv4Addr, SocketAddr},
+    str::FromStr,
     sync::Arc,
 };
 use tokio::prelude::Future as Future01;
@@ -53,7 +54,7 @@ async fn try_main() -> Result<()> {
 
         debug!("Parsing redis addr: {}", addr);
 
-        SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 6379)
+        SocketAddr::from_str(&addr)?
     };
     let shard_id = env::var("DISCORD_SHARD_ID")?.parse::<u16>()?;
     let shard_total = env::var("DISCORD_SHARD_TOTAL")?.parse()?;
