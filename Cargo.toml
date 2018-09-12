@@ -24,7 +24,7 @@ tungstenite = "0.6"
 
 [dependencies.futures-preview]
 features = ["compat", "tokio-compat"]
-git = "https://github.com/rust-lang-nursery/futures-rs"
+version = "0.3.0-alpha.6"
 
 [dependencies.redis-async]
 git = "https://github.com/zeyla/redis-async-rs"
