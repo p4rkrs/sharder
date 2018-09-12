@@ -1,4 +1,5 @@
 use redis_async::error::Error as RedisError;
+use serde_json::Error as JsonError;
 use serenity::Error as SerenityError;
 use std::{
     error::Error as StdError,
@@ -17,6 +18,7 @@ pub type Result<T> = StdResult<T, Error>;
 pub enum Error {
     AddrParse(AddrParseError),
     Io(IoError),
+    Json(JsonError),
     ParseInt(ParseIntError),
     Redis(RedisError),
     Serenity(SerenityError),
@@ -35,6 +37,7 @@ impl StdError for Error {
         match self {
             Error::AddrParse(why) => why.description(),
             Error::Io(why) => why.description(),
+            Error::Json(why) => why.description(),
             Error::ParseInt(why) => why.description(),
             Error::Redis(why) => why.description(),
             Error::Serenity(why) => why.description(),
@@ -53,6 +56,12 @@ impl From<AddrParseError> for Error {
 impl From<IoError> for Error {
     fn from(e: IoError) -> Self {
         Error::Io(e)
+    }
+}
+
+impl From<JsonError> for Error {
+    fn from(e: JsonError) -> Self {
+        Error::Json(e)
     }
 }
 
