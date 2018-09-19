@@ -41,7 +41,16 @@ fn main() -> Result<()> {
 }
 
 async fn try_main() -> Result<()> {
-    let token = env::var("DISCORD_TOKEN")?;
+    let token = {
+        let mut token = env::var("DISCORD_TOKEN")?;
+
+        if !token.starts_with("Bot ") {
+            token.insert_str(0, "Bot");
+        }
+
+        token
+    };
+
     let redis_addr = {
         let addr = env::var("REDIS_ADDR")?;
 
