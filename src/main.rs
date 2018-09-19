@@ -45,7 +45,7 @@ async fn try_main() -> Result<()> {
         let mut token = env::var("DISCORD_TOKEN")?;
 
         if !token.starts_with("Bot ") {
-            token.insert_str(0, "Bot");
+            token.insert_str(0, "Bot ");
         }
 
         token
@@ -71,15 +71,14 @@ async fn try_main() -> Result<()> {
     }));
 
     for id in shard_start..=shard_until {
-        let data = SpawnData {
+        utils::spawn(spawner::spawn(SpawnData {
             queue: queue_tx.clone(),
             shard_id: id,
             token: token.clone(),
             redis: Arc::clone(&redis),
             redis_addr,
             shard_total,
-        };
-        utils::spawn(spawner::spawn(data));
+        }));
     }
 
     await!(futures::future::empty::<()>());
