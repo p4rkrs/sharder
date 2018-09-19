@@ -11,3 +11,9 @@ pub fn parse_tungstenite_msg(msg: &TungsteniteMessage) -> Result<GatewayEvent> {
 
     res.map_err(From::from)
 }
+
+pub fn spawn(future: impl Future<Output = Result<()>> + Send + 'static) {
+    tokio::spawn(future.boxed().compat(TokioDefaultSpawner).map_err(|why| {
+        warn!("Err running shard: {:?}", why);
+    }));
+}

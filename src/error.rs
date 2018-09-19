@@ -1,3 +1,7 @@
+use futures::channel::{
+    mpsc::TrySendError,
+    oneshot::{Canceled, Sender as OneshotSender},
+};
 use redis_async::error::Error as RedisError;
 use serde_json::Error as JsonError;
 use serenity::Error as SerenityError;
@@ -17,11 +21,13 @@ pub type Result<T> = StdResult<T, Error>;
 #[derive(Debug)]
 pub enum Error {
     AddrParse(AddrParseError),
+    Canceled(Canceled),
     Io(IoError),
     Json(JsonError),
     ParseInt(ParseIntError),
     Redis(RedisError),
     Serenity(SerenityError),
+    TrySendError,
     Tungstenite(TungsteniteError),
     Var(VarError),
 }
@@ -36,11 +42,13 @@ impl StdError for Error {
     fn description(&self) -> &str {
         match self {
             Error::AddrParse(why) => why.description(),
+            Error::Canceled(why) => why.description(),
             Error::Io(why) => why.description(),
             Error::Json(why) => why.description(),
             Error::ParseInt(why) => why.description(),
             Error::Redis(why) => why.description(),
             Error::Serenity(why) => why.description(),
+            Error::TrySendError => "Error sending over oneshot tx",
             Error::Tungstenite(why) => why.description(),
             Error::Var(why) => why.description(),
         }
@@ -50,6 +58,12 @@ impl StdError for Error {
 impl From<AddrParseError> for Error {
     fn from(e: AddrParseError) -> Self {
         Error::AddrParse(e)
+    }
+}
+
+impl From<Canceled> for Error {
+    fn from(e: Canceled) -> Self {
+        Error::Canceled(e)
     }
 }
 
@@ -80,6 +94,12 @@ impl From<RedisError> for Error {
 impl From<SerenityError> for Error {
     fn from(e: SerenityError) -> Self {
         Error::Serenity(e)
+    }
+}
+
+impl From<TrySendError<OneshotSender<()>>> for Error {
+    fn from(_: TrySendError<OneshotSender<()>>) -> Self {
+        Error::TrySendError
     }
 }
 

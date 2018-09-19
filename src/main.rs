@@ -6,14 +6,17 @@
 mod background;
 mod error;
 mod prelude;
+mod queue;
 mod spawner;
 mod utils;
 
 use crate::{
     prelude::*,
+    queue::QueueData,
     spawner::SpawnData,
 };
 use futures::{
+    channel::mpsc,
     compat::{Future01CompatExt, TokioDefaultSpawner},
     future::{FutureExt, TryFutureExt},
 };
@@ -46,21 +49,31 @@ async fn try_main() -> Result<()> {
 
         SocketAddr::from_str(&addr)?
     };
-    let shard_id = env::var("DISCORD_SHARD_ID")?.parse::<u16>()?;
+    let shard_start = env::var("DISCORD_SHARD_START")?.parse::<u16>()?;
+    let shard_until = env::var("DISCORD_SHARD_UNTIL")?.parse::<u16>()?;
     let shard_total = env::var("DISCORD_SHARD_TOTAL")?.parse()?;
 
     let redis = Arc::new(await!(redis_client::paired_connect(&redis_addr).compat())?);
 
-    let data = SpawnData {
-        redis,
-        redis_addr,
-        shard_id,
-        shard_total,
-        token,
-    };
-    tokio::run(spawner::spawn(data).boxed().compat(TokioDefaultSpawner).map_err(|why| {
-        warn!("Err running shard: {:?}", why);
+    let (queue_tx, queue_rx) = mpsc::unbounded();
+
+    utils::spawn(queue::start(QueueData {
+        requests: queue_rx,
     }));
+
+    for id in shard_start..=shard_until {
+        let data = SpawnData {
+            queue: queue_tx.clone(),
+            shard_id: id,
+            token: token.clone(),
+            redis: Arc::clone(&redis),
+            redis_addr,
+            shard_total,
+        };
+        utils::spawn(spawner::spawn(data));
+    }
+
+    await!(futures::future::empty::<()>());
 
     Ok(())
 }

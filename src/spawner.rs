@@ -2,7 +2,12 @@ use byteorder::{LE, WriteBytesExt};
 use crate::{
     background::{self, BackgroundData},
     prelude::*,
+    queue,
     utils,
+};
+use futures::channel::{
+    mpsc::UnboundedSender,
+    oneshot::Sender as OneshotSender,
 };
 use parking_lot::Mutex;
 use redis_async::client::PairedConnection;
@@ -16,6 +21,7 @@ use std::{
 use tungstenite::{Error as TungsteniteError, Message as TungsteniteMessage};
 
 pub struct SpawnData {
+    pub queue: UnboundedSender<OneshotSender<()>>,
     pub redis: Arc<PairedConnection>,
     pub redis_addr: SocketAddr,
     pub shard_id: u16,
@@ -25,12 +31,15 @@ pub struct SpawnData {
 
 pub async fn spawn(data: SpawnData) -> Result<()> {
     let SpawnData {
+        queue,
         redis,
         redis_addr,
         shard_id,
         shard_total,
         token,
     } = data;
+
+    await!(queue::up(&queue))?;
 
     let mut shard = await!(Shard::new(
         token.clone(),
@@ -39,14 +48,15 @@ pub async fn spawn(data: SpawnData) -> Result<()> {
     let mut messages = shard.messages().compat();
     let shard = Arc::new(Mutex::new(shard));
 
-    let bg_future = background::start(BackgroundData {
+    utils::spawn(background::start(BackgroundData {
         shard: Arc::clone(&shard),
         redis_addr,
         shard_id,
-    }).boxed().compat(TokioDefaultSpawner).map_err(move |why| {
+    }).map_err(move |why| {
         warn!("Error with background task for shard {}: {:?}", shard_id, why);
-    });
-    tokio::spawn(bg_future);
+
+        why
+    }));
 
     loop {
         let result: Result<_> = try {
@@ -110,6 +120,8 @@ pub async fn spawn(data: SpawnData) -> Result<()> {
                     continue;
                 },
             }
+
+            await!(queue::up(&queue))?;
 
             let autoreconnect = shard.lock().autoreconnect().compat();
             await!(autoreconnect)?;
