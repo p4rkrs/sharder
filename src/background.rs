@@ -23,6 +23,9 @@ pub async fn start(background: BackgroundData) -> Result<()> {
         shard,
         shard_id,
     } = background;
+
+    info!("Starting background future for shard ID {}", shard_id);
+
     let key = format!("sharder:to:{}", shard_id);
     let redis = await!(redis_client::paired_connect(&redis_addr).compat())?;
 

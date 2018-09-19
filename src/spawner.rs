@@ -39,7 +39,7 @@ pub async fn spawn(data: SpawnData) -> Result<()> {
         token,
     } = data;
 
-    await!(queue::up(&queue))?;
+    await!(queue::up(&queue, shard_id))?;
 
     let mut shard = await!(Shard::new(
         token.clone(),
@@ -60,53 +60,55 @@ pub async fn spawn(data: SpawnData) -> Result<()> {
 
     loop {
         let result: Result<_> = try {
-            while let Some(Ok(msg)) = await!(messages.next()) {
-                trace!("Received message: {:?}", msg);
+            let msg = await!(messages.next())??;
+            trace!("Received message: {:?}", msg);
 
-                match msg {
-                    TungsteniteMessage::Binary(_)
-                        | TungsteniteMessage::Text(_) => {},
-                    TungsteniteMessage::Ping(_)
-                        | TungsteniteMessage::Pong(_) => continue,
-                }
-
-                trace!("Parsing message");
-                let event = utils::parse_tungstenite_msg(&msg)?;
-                trace!("Parsed message");
-
-                let mut bytes = match msg {
-                    TungsteniteMessage::Binary(v) => v,
-                    TungsteniteMessage::Text(v) => v.into_bytes(),
-                    _ => continue,
-                };
-
-                trace!("Shard processing event");
-
-                let process = shard.lock().process(&event);
-
-                if let Some(future) = process {
-                    trace!("Awaiting shard task");
-
-                    await!(future.compat())?;
-
-                    trace!("Awaited shard task successfully");
-                }
-
-                trace!("Pushing event to redis");
-
-                bytes.write_u16::<LE>(shard_id)?;
-
-                let cmd = resp_array!["RPUSH", "sharder:from", bytes];
-                redis.send_and_forget(cmd);
-
-                trace!("Message processing completed");
+            match msg {
+                TungsteniteMessage::Binary(_)
+                    | TungsteniteMessage::Text(_) => {},
+                TungsteniteMessage::Ping(_)
+                    | TungsteniteMessage::Pong(_) => continue,
             }
+
+            trace!("Parsing message");
+            let event = utils::parse_tungstenite_msg(&msg)?;
+            trace!("Parsed message");
+
+            let mut bytes = match msg {
+                TungsteniteMessage::Binary(v) => v,
+                TungsteniteMessage::Text(v) => v.into_bytes(),
+                _ => continue,
+            };
+
+            trace!("Shard processing event");
+
+            let process = shard.lock().process(&event);
+
+            if let Some(future) = process {
+                trace!("Awaiting shard task");
+
+                await!(future.compat())?;
+
+                trace!("Awaited shard task successfully");
+            }
+
+            trace!("Pushing event to redis");
+
+            bytes.write_u16::<LE>(shard_id)?;
+
+            let cmd = resp_array!["RPUSH", "sharder:from", bytes];
+            redis.send_and_forget(cmd);
+
+            trace!("Message processing completed");
         };
 
         if let Err(why) = result {
             debug!("Error with loop occurred: {:?}", why);
 
             match why {
+                Error::None => {
+                    debug!("Received nothing in messages stream");
+                },
                 Error::Tungstenite(TungsteniteError::ConnectionClosed(Some(close))) => {
                     info!(
                         "Close: code: {}; reason: {}",
@@ -121,10 +123,22 @@ pub async fn spawn(data: SpawnData) -> Result<()> {
                 },
             }
 
-            await!(queue::up(&queue))?;
+            // If the session ID still exists, it will be a resume, otherwise
+            // it's a reconnect.
+            if shard.lock().session_id().is_some() {
+                info!("Resuming shard {}", shard_id);
 
-            let autoreconnect = shard.lock().autoreconnect().compat();
-            await!(autoreconnect)?;
+                await!(shard.lock().autoreconnect().compat());
+            } else {
+                info!("Placing shard {} in queue to reconnect", shard_id);
+
+                await!(queue::up(&queue, shard_id))?;
+
+                let autoreconnect = shard.lock().autoreconnect().compat();
+
+                info!("Reconnecting shard {}", shard_id);
+                await!(autoreconnect)?;
+            }
         }
     }
 }

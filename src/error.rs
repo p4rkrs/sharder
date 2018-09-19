@@ -12,6 +12,7 @@ use std::{
     io::Error as IoError,
     net::AddrParseError,
     num::ParseIntError,
+    option::NoneError,
     result::Result as StdResult,
 };
 use tungstenite::Error as TungsteniteError;
@@ -24,6 +25,7 @@ pub enum Error {
     Canceled(Canceled),
     Io(IoError),
     Json(JsonError),
+    None,
     ParseInt(ParseIntError),
     Redis(RedisError),
     Serenity(SerenityError),
@@ -45,6 +47,7 @@ impl StdError for Error {
             Error::Canceled(why) => why.description(),
             Error::Io(why) => why.description(),
             Error::Json(why) => why.description(),
+            Error::None => "No value",
             Error::ParseInt(why) => why.description(),
             Error::Redis(why) => why.description(),
             Error::Serenity(why) => why.description(),
@@ -76,6 +79,12 @@ impl From<IoError> for Error {
 impl From<JsonError> for Error {
     fn from(e: JsonError) -> Self {
         Error::Json(e)
+    }
+}
+
+impl From<NoneError> for Error {
+    fn from(_: NoneError) -> Self {
+        Error::None
     }
 }
 

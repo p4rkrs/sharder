@@ -1,4 +1,4 @@
-#![feature(async_await, await_macro, futures_api, try_blocks)]
+#![feature(async_await, await_macro, futures_api, try_blocks, try_trait)]
 
 #[macro_use] extern crate log;
 #[macro_use] extern crate redis_async;
@@ -70,7 +70,11 @@ async fn try_main() -> Result<()> {
         requests: queue_rx,
     }));
 
+    info!("Starting to spawn shards");
+
     for id in shard_start..=shard_until {
+        debug!("Spawning shard ID {}", id);
+
         utils::spawn(spawner::spawn(SpawnData {
             queue: queue_tx.clone(),
             shard_id: id,
