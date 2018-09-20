@@ -103,11 +103,15 @@ pub async fn spawn(data: SpawnData) -> Result<()> {
         };
 
         if let Err(why) = result {
-            debug!("Error with loop occurred: {:?}", why);
+            debug!("Error with loop occurred on shard {}: {:?}", shard_id, why);
 
             match why {
                 Error::None => {
                     debug!("Received nothing in messages stream");
+                },
+                Error::Tungstenite(TungsteniteError::Capacity(message)) => {
+                    warn!("Error reading frame: {}", message);
+                    debug!("Skipping frame for being too large");
                 },
                 Error::Tungstenite(TungsteniteError::ConnectionClosed(Some(close))) => {
                     info!(
@@ -115,6 +119,11 @@ pub async fn spawn(data: SpawnData) -> Result<()> {
                         close.code,
                         close.reason,
                     );
+                },
+                Error::Tungstenite(TungsteniteError::Protocol(reason)) => {
+                    if reason != "Connection reset without closing handshake" {
+                        continue;
+                    }
                 },
                 other => {
                     warn!("Shard error: {:?}", other);
