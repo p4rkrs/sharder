@@ -138,6 +138,7 @@ pub async fn spawn(data: SpawnData) -> Result<()> {
                 info!("Resuming shard {}", shard_id);
 
                 await!(shard.lock().autoreconnect().compat());
+                messages = shard.lock().messages().compat();
             } else {
                 info!("Placing shard {} in queue to reconnect", shard_id);
 
@@ -147,6 +148,7 @@ pub async fn spawn(data: SpawnData) -> Result<()> {
 
                 info!("Reconnecting shard {}", shard_id);
                 await!(autoreconnect)?;
+                messages = shard.lock().messages().compat();
             }
         }
     }
