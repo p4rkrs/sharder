@@ -12,7 +12,7 @@ use futures::channel::{
 use parking_lot::Mutex;
 use redis_async::client::PairedConnection;
 use serenity::{
-    gateway::Shard,
+    gateway::{Action, Shard},
 };
 use std::{
     net::SocketAddr,
@@ -84,10 +84,44 @@ pub async fn spawn(data: SpawnData) -> Result<()> {
 
             let process = shard.lock().process(&event);
 
-            if let Ok(Some(future)) = process {
-                trace!("Awaiting shard task");
+            if let Ok(Some(action)) = process {
+                match action {
+                    Action::Autoreconnect => {
+                        info!(
+                            "[Shard {}] Shard told us to autoreconnect",
+                            shard_id,
+                        );
 
-                await!(future.compat())?;
+                        await!(shard.lock().autoreconnect().compat())?;
+                        messages = shard.lock().messages()?.compat();
+                    },
+                    Action::Identify => {
+                        info!(
+                            "[Shard {}] Shard told us to identify",
+                            shard_id,
+                        );
+
+                        shard.lock().identify()?;
+                    },
+                    Action::Reconnect => {
+                        info!(
+                            "[Shard {}] Shard told us to reconnect",
+                            shard_id,
+                        );
+
+                        await!(shard.lock().reconnect().compat())?;
+                        messages = shard.lock().messages()?.compat();
+                    },
+                    Action::Resume => {
+                        info!(
+                            "[Shard {}] Shard told us to resume",
+                            shard_id,
+                        );
+
+                        await!(shard.lock().resume().compat())?;
+                        messages = shard.lock().messages()?.compat();
+                    },
+                }
 
                 trace!("Awaited shard task successfully");
             }
