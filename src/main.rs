@@ -17,7 +17,7 @@ use crate::{
 };
 use futures::{
     channel::mpsc,
-    compat::{Future01CompatExt, TokioDefaultSpawner},
+    compat::Future01CompatExt,
     future::{FutureExt, TryFutureExt},
 };
 use redis_async::client as redis_client;
@@ -33,7 +33,7 @@ fn main() -> Result<()> {
     kankyo::load()?;
     env_logger::init();
 
-    tokio::run(try_main().boxed().compat(TokioDefaultSpawner).map_err(|why| {
+    tokio::run(try_main().boxed().compat().map_err(|why| {
         error!("Error running: {:?}", why);
     }));
 
