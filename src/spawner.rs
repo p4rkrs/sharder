@@ -45,7 +45,7 @@ pub async fn spawn(data: SpawnData) -> Result<()> {
         token.clone(),
         [shard_id as u64, shard_total],
     ).compat())?;
-    let mut messages = shard.messages().compat();
+    let mut messages = shard.messages().expect("No shard messages").compat();
     let shard = Arc::new(Mutex::new(shard));
 
     utils::spawn(background::start(BackgroundData {
@@ -84,7 +84,7 @@ pub async fn spawn(data: SpawnData) -> Result<()> {
 
             let process = shard.lock().process(&event);
 
-            if let Some(future) = process {
+            if let Ok(Some(future)) = process {
                 trace!("Awaiting shard task");
 
                 await!(future.compat())?;
@@ -138,7 +138,10 @@ pub async fn spawn(data: SpawnData) -> Result<()> {
                 info!("Resuming shard {}", shard_id);
 
                 await!(shard.lock().autoreconnect().compat());
-                messages = shard.lock().messages().compat();
+                messages = shard.lock()
+                    .messages()
+                    .expect("No shard messages on resume")
+                    .compat();
             } else {
                 info!("Placing shard {} in queue to reconnect", shard_id);
 
@@ -148,7 +151,10 @@ pub async fn spawn(data: SpawnData) -> Result<()> {
 
                 info!("Reconnecting shard {}", shard_id);
                 await!(autoreconnect)?;
-                messages = shard.lock().messages().compat();
+                messages = shard.lock()
+                    .messages()
+                    .expect("No shard messages on autoreconnect")
+                    .compat();
             }
         }
     }
