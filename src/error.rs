@@ -1,6 +1,6 @@
 use futures::channel::{
     mpsc::TrySendError,
-    oneshot::{Canceled, Sender as OneshotSender},
+    oneshot::Canceled,
 };
 use redis_async::error::Error as RedisError;
 use serde_json::Error as JsonError;
@@ -106,8 +106,8 @@ impl From<SerenityError> for Error {
     }
 }
 
-impl From<TrySendError<OneshotSender<()>>> for Error {
-    fn from(_: TrySendError<OneshotSender<()>>) -> Self {
+impl<T> From<TrySendError<T>> for Error {
+    fn from(_: TrySendError<T>) -> Self {
         Error::TrySendError
     }
 }

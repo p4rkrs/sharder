@@ -2,13 +2,9 @@ use byteorder::{LE, WriteBytesExt};
 use crate::{
     background::{self, BackgroundData},
     prelude::*,
-    queue,
     utils,
 };
-use futures::channel::{
-    mpsc::UnboundedSender,
-    oneshot::Sender as OneshotSender,
-};
+use futures::channel::mpsc::UnboundedSender;
 use parking_lot::Mutex;
 use redis_async::client::PairedConnection;
 use serenity::{
@@ -21,7 +17,7 @@ use std::{
 use tungstenite::{Error as TungsteniteError, Message as TungsteniteMessage};
 
 pub struct SpawnData {
-    pub queue: UnboundedSender<OneshotSender<()>>,
+    pub queue: UnboundedSender<u16>,
     pub redis: Arc<PairedConnection>,
     pub redis_addr: SocketAddr,
     pub shard_id: u16,
@@ -38,8 +34,6 @@ pub async fn spawn(data: SpawnData) -> Result<()> {
         shard_total,
         token,
     } = data;
-
-    await!(queue::up(&queue, shard_id))?;
 
     let mut shard = await!(Shard::new(
         token.clone(),
@@ -109,8 +103,7 @@ pub async fn spawn(data: SpawnData) -> Result<()> {
                             shard_id,
                         );
 
-                        await!(shard.lock().reconnect().compat())?;
-                        messages = shard.lock().messages()?.compat();
+                        break;
                     },
                     Action::Resume => {
                         info!(
@@ -128,7 +121,7 @@ pub async fn spawn(data: SpawnData) -> Result<()> {
 
             trace!("Pushing event to redis");
 
-            bytes.write_u16::<LE>(shard_id)?;
+            bytes.write_u16::<LE>(shard_id as u16)?;
 
             let cmd = resp_array!["RPUSH", "sharder:from", bytes];
             redis.send_and_forget(cmd);
@@ -171,7 +164,12 @@ pub async fn spawn(data: SpawnData) -> Result<()> {
             if shard.lock().session_id().is_some() {
                 info!("Resuming shard {}", shard_id);
 
-                await!(shard.lock().autoreconnect().compat());
+                if let Err(why) = await!(shard.lock().autoreconnect().compat()) {
+                    warn!("[Shard {}] Err resuming: {:?}", shard_id, why);
+
+                    break;
+                }
+
                 messages = shard.lock()
                     .messages()
                     .expect("No shard messages on resume")
@@ -179,17 +177,10 @@ pub async fn spawn(data: SpawnData) -> Result<()> {
             } else {
                 info!("Placing shard {} in queue to reconnect", shard_id);
 
-                await!(queue::up(&queue, shard_id))?;
-
-                let autoreconnect = shard.lock().autoreconnect().compat();
-
-                info!("Reconnecting shard {}", shard_id);
-                await!(autoreconnect)?;
-                messages = shard.lock()
-                    .messages()
-                    .expect("No shard messages on autoreconnect")
-                    .compat();
+                break;
             }
         }
     }
+
+    queue.unbounded_send(shard_id).map_err(From::from)
 }

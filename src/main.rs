@@ -13,10 +13,8 @@ mod utils;
 use crate::{
     prelude::*,
     queue::QueueData,
-    spawner::SpawnData,
 };
 use futures::{
-    channel::mpsc,
     compat::Future01CompatExt,
     future::{FutureExt, TryFutureExt},
 };
@@ -64,26 +62,16 @@ async fn try_main() -> Result<()> {
 
     let redis = Arc::new(await!(redis_client::paired_connect(&redis_addr).compat())?);
 
-    let (queue_tx, queue_rx) = mpsc::unbounded();
-
-    utils::spawn(queue::start(QueueData {
-        requests: queue_rx,
-    }));
+    await!(queue::start(QueueData {
+        redis,
+        redis_addr,
+        shard_start,
+        shard_total,
+        shard_until,
+        token,
+    }))?;
 
     info!("Starting to spawn shards");
-
-    for id in shard_start..=shard_until {
-        debug!("Spawning shard ID {}", id);
-
-        utils::spawn(spawner::spawn(SpawnData {
-            queue: queue_tx.clone(),
-            shard_id: id,
-            token: token.clone(),
-            redis: Arc::clone(&redis),
-            redis_addr,
-            shard_total,
-        }));
-    }
 
     await!(futures::future::empty::<()>());
 

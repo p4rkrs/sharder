@@ -1,32 +1,61 @@
-use crate::prelude::*;
-use futures::channel::{
-    mpsc::{UnboundedReceiver, UnboundedSender},
-    oneshot::{self, Sender as OneshotSender},
+use crate::{
+    prelude::*,
+    spawner::{self, SpawnData},
+    utils,
 };
-use std::time::{Duration, Instant};
+use futures::channel::mpsc;
+use redis_async::client::PairedConnection;
+use std::{
+    net::SocketAddr,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 use tokio::timer::Delay;
 
 const QUEUE_WAIT: Duration = Duration::from_secs(7);
 
 pub struct QueueData {
-    pub requests: UnboundedReceiver<OneshotSender<()>>,
+    pub redis: Arc<PairedConnection>,
+    pub redis_addr: SocketAddr,
+    pub shard_start: u16,
+    pub shard_total: u64,
+    pub shard_until: u16,
+    pub token: String,
 }
 
 pub async fn start(data: QueueData) -> Result<()> {
-    let QueueData {
-        mut requests,
-    } = data;
+    let (tx, mut rx) = mpsc::unbounded();
 
-    info!("Initializing queue");
+    info!(
+        "Initializing queue of shards {}-{}/{}",
+        data.shard_start,
+        data.shard_until,
+        data.shard_total,
+    );
 
-    while let Some(sender) = await!(requests.next()) {
-        debug!("Releasing shard from queue");
+    for id in data.shard_start ..= data.shard_until {
+        tx.unbounded_send(id).expect("Err putting ID into initial queue");
+    }
 
-        if let Err(why) = sender.send(()) {
-            warn!("Err sending from queue: {:?}", why);
+    while let Some(id) = await!(rx.next()) {
+        debug!("Releasing shard {} from queue", id);
 
-            continue;
-        }
+        let tx2 = tx.clone();
+
+        utils::spawn(spawner::spawn(SpawnData {
+            queue: tx.clone(),
+            redis: Arc::clone(&data.redis),
+            redis_addr: data.redis_addr.clone(),
+            shard_id: id,
+            shard_total: data.shard_total,
+            token: data.token.clone(),
+        }).map_err(move |why| {
+            warn!("Err with spawner: {:?}", why);
+
+            let _ = tx2.unbounded_send(id);
+
+            why
+        }));
 
         debug!("Sleeping");
 
@@ -36,21 +65,6 @@ pub async fn start(data: QueueData) -> Result<()> {
     }
 
     info!("Queue ended");
-
-    Ok(())
-}
-
-pub async fn up(
-    queue: &UnboundedSender<OneshotSender<()>>,
-    shard_id: u16,
-) -> Result<()> {
-    let (tx, rx) = oneshot::channel();
-
-    info!("Enqueueing shard ID {}", shard_id);
-    queue.unbounded_send(tx)?;
-
-    await!(rx)?;
-    info!("Released shard ID {}", shard_id);
 
     Ok(())
 }
