@@ -25,7 +25,7 @@ features = ["compat", "tokio-compat"]
 version = "0.3.0-alpha.9"
 
 [dependencies.redis-async]
-git = "https://github.com/zeyla/redis-async-rs"
+git = "https://github.com/dabbotorg/redis-async-rs"
 
 [dependencies.serenity]
 branch = "futures"
