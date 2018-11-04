@@ -52,7 +52,7 @@ were still being processed, and there was 0 downtime.
 ## Running it
 
 ```sh
-$ git clone https://github.com/serenity-rs/sharder-binary sharder
+$ git clone https://github.com/dabbotorg/sharder
 $ cd $_
 $ cp .env.example .env
 $ vim .env # edit your token in here
